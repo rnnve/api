@@ -3,6 +3,7 @@ import { z } from "zod"
 const envSchema = z.object({
   DISCORD_TOKEN: z.string().default(""),
   DISCORD_USER_ID: z.string().default(""),
+  DISCORD_USER_ID_2: z.string().default(""),
   DISCORD_GUILD_ID: z.string().default(""),
   DISCORD_CLIENT_ID: z.string().default(""),
   DISCORD_CLIENT_SECRET: z.string().default(""),

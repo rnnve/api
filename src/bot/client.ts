@@ -14,7 +14,10 @@ export function createBot(env: Env, redis: RedisService): Client {
     ],
   })
 
-  setupHandlers(client, redis, env.DISCORD_USER_ID, env.DISCORD_GUILD_ID || undefined)
+  const userIds = [env.DISCORD_USER_ID, env.DISCORD_USER_ID_2].filter(Boolean)
+  for (const id of userIds) {
+    setupHandlers(client, redis, id, env.DISCORD_GUILD_ID || undefined)
+  }
   return client
 }
 
