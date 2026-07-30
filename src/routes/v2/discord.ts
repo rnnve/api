@@ -10,11 +10,18 @@ interface SSEClient {
   heartbeat: ReturnType<typeof setInterval>
 }
 
+interface DiscordRouteOptions {
+  redis: RedisService
+  subscriber: Redis
+  targetUserId?: string
+  prefix: string
+}
+
 const detail = (summary: string, description: string, tags = ["Discord"]) => ({
   detail: { summary, description, tags },
 })
 
-export function createDiscordRoutes(redis: RedisService, subscriber: Redis, trackedUserIds: string[]) {
+function createPlugin({ redis, subscriber, targetUserId, prefix }: DiscordRouteOptions) {
   const clients = new Map<string, SSEClient>()
 
   subscriber.subscribe(PRESENCE_CHANNEL, (err) => {
@@ -46,13 +53,7 @@ export function createDiscordRoutes(redis: RedisService, subscriber: Redis, trac
     }
   })
 
-  function resolveUserId(query: Record<string, string | undefined>): string | undefined {
-    const override = query.userId
-    if (override && trackedUserIds.includes(override)) return override
-    return trackedUserIds[0]
-  }
-
-  function createSSEStream(request: Request, userId: string): ReadableStream {
+  function createSSEStream(request: Request): ReadableStream {
     return new ReadableStream({
       start: (controller) => {
         const sid = Math.random().toString(36).slice(2, 10)
@@ -65,20 +66,22 @@ export function createDiscordRoutes(redis: RedisService, subscriber: Redis, trac
           }
         }, 30000)
 
-        clients.set(sid, { userId, controller, heartbeat })
+        clients.set(sid, { userId: targetUserId!, controller, heartbeat })
 
         controller.enqueue(new TextEncoder().encode(": connected\n\n"))
 
-        redis.getUser(userId).then((user) => {
-          if (user) {
-            const event = `event: presence_update\ndata: ${JSON.stringify({ success: true, data: user })}\n\n`
-            try {
-              controller.enqueue(new TextEncoder().encode(event))
-            } catch {
-              /* client disconnected */
+        if (targetUserId) {
+          redis.getUser(targetUserId).then((user) => {
+            if (user) {
+              const event = `event: presence_update\ndata: ${JSON.stringify({ success: true, data: user })}\n\n`
+              try {
+                controller.enqueue(new TextEncoder().encode(event))
+              } catch {
+                /* client disconnected */
+              }
             }
-          }
-        })
+          })
+        }
 
         request.signal.addEventListener("abort", () => {
           clearInterval(heartbeat)
@@ -88,91 +91,125 @@ export function createDiscordRoutes(redis: RedisService, subscriber: Redis, trac
     })
   }
 
-  function userNotFound(userId: string) {
-    return {
-      success: false,
-      error: `No cached data for user ${userId}`,
-    }
-  }
-
-  return new Elysia({ prefix: "/v2/discord" })
+  return new Elysia({ prefix })
     .get(
       "/",
-      async ({ query }) => {
-        const userId = resolveUserId(query)
-        if (!userId) return { success: false, error: "No tracked user configured" }
-        const user = await redis.getUser(userId)
-        if (!user) return userNotFound(userId)
+      async () => {
+        if (!targetUserId) return { success: false, error: "No tracked user configured" }
+        const user = await redis.getUser(targetUserId)
+        if (!user) return { success: false, error: "No cached data for tracked user" }
         return { success: true, data: user } satisfies ApiResponse<DiscordUserPayload>
       },
-      detail("Get tracked user", "Returns cached data for the configured tracked user. Specify ?userId= to target a specific user."),
+      detail("Get tracked user", "Returns cached data for the configured tracked user."),
     )
     .get(
       "/profile",
-      async ({ query, set }) => {
-        const userId = resolveUserId(query)
-        if (!userId) { set.status = 404; return { success: false, error: "No tracked user configured" } }
-        const profile = await redis.getProfile(userId)
-        if (!profile) { set.status = 404; return userNotFound(userId) }
+      async ({ set }) => {
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "No tracked user configured" }
+        }
+        const profile = await redis.getProfile(targetUserId)
+        if (!profile) {
+          set.status = 404
+          return { success: false, error: "No cached data for tracked user" }
+        }
         return { success: true, data: profile } satisfies ApiResponse<DiscordProfile>
       },
       detail("Get tracked user profile", "Returns cached profile information (username, avatar, banner, accent color, badges, guild)."),
     )
     .get(
       "/presence",
-      async ({ query, set }) => {
-        const userId = resolveUserId(query)
-        if (!userId) { set.status = 404; return { success: false, error: "No tracked user configured" } }
-        const presence = await redis.getPresence(userId)
-        if (!presence) { set.status = 404; return userNotFound(userId) }
+      async ({ set }) => {
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "No tracked user configured" }
+        }
+        const presence = await redis.getPresence(targetUserId)
+        if (!presence) {
+          set.status = 404
+          return { success: false, error: "No cached data for tracked user" }
+        }
         return { success: true, data: presence }
       },
       detail("Get tracked user presence", "Returns cached presence data (status, activities, Spotify, devices)."),
     )
     .get(
       "/status",
-      async ({ query, set }) => {
-        const userId = resolveUserId(query)
-        if (!userId) { set.status = 404; return { success: false, error: "No tracked user configured" } }
-        const user = await redis.getUser(userId)
-        if (!user) { set.status = 404; return userNotFound(userId) }
-        return { success: true, data: { id: user.id, status: user.status } }
+      async ({ set }) => {
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "No tracked user configured" }
+        }
+        const user = await redis.getUser(targetUserId)
+        if (!user) {
+          set.status = 404
+          return { success: false, error: "No cached data for tracked user" }
+        }
+        return {
+          success: true,
+          data: { id: user.id, status: user.status },
+        }
       },
       detail("Get tracked user status", "Returns a lightweight payload with only user ID and current status."),
     )
     .get(
       "/badges",
-      async ({ query, set }) => {
-        const userId = resolveUserId(query)
-        if (!userId) { set.status = 404; return { success: false, error: "No tracked user configured" } }
-        const user = await redis.getUser(userId)
-        if (!user) { set.status = 404; return userNotFound(userId) }
-        return { success: true, data: { id: user.id, badges: user.badges, publicFlags: user.publicFlags } }
+      async ({ set }) => {
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "No tracked user configured" }
+        }
+        const user = await redis.getUser(targetUserId)
+        if (!user) {
+          set.status = 404
+          return { success: false, error: "No cached data for tracked user" }
+        }
+        return {
+          success: true,
+          data: {
+            id: user.id,
+            badges: user.badges,
+            publicFlags: user.publicFlags,
+          },
+        }
       },
       detail("Get tracked user badges", "Returns the user's Discord badges (resolved names) and raw public_flags bitfield."),
     )
     .get(
       "/guild",
-      async ({ query, set }) => {
-        const userId = resolveUserId(query)
-        if (!userId) { set.status = 404; return { success: false, error: "No tracked user configured" } }
-        const user = await redis.getUser(userId)
-        if (!user) { set.status = 404; return userNotFound(userId) }
-        return { success: true, data: { id: user.id, guildId: user.guildId, guildName: user.guildName, primaryGuild: user.primaryGuild } }
+      async ({ set }) => {
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "No tracked user configured" }
+        }
+        const user = await redis.getUser(targetUserId)
+        if (!user) {
+          set.status = 404
+          return { success: false, error: "No cached data for tracked user" }
+        }
+        return {
+          success: true,
+          data: {
+            id: user.id,
+            guildId: user.guildId,
+            guildName: user.guildName,
+            primaryGuild: user.primaryGuild,
+          },
+        }
       },
       detail("Get tracked user guild info", "Returns the user's current guild context and primary guild (clan) tag."),
     )
     .get(
       "/live",
-      ({ request, query }) => {
-        const userId = resolveUserId(query)
-        if (!userId) {
+      ({ request }) => {
+        if (!targetUserId) {
           return new Response(JSON.stringify({ success: false, error: "No tracked user configured" }), {
             status: 404,
             headers: { "Content-Type": "application/json" },
           })
         }
-        const stream = createSSEStream(request, userId)
+        const stream = createSSEStream(request)
         return new Response(stream, {
           headers: {
             "Content-Type": "text/event-stream",
@@ -189,4 +226,12 @@ export function createDiscordRoutes(redis: RedisService, subscriber: Redis, trac
           "Includes a heartbeat comment every 30 seconds.",
       ),
     )
+}
+
+export function createDiscordRoutes(redis: RedisService, subscriber: Redis, targetUserId?: string) {
+  return createPlugin({ redis, subscriber, targetUserId, prefix: "/v2/discord" })
+}
+
+export function createDiscordRoutesNd(redis: RedisService, subscriber: Redis, targetUserId?: string) {
+  return createPlugin({ redis, subscriber, targetUserId, prefix: "/v2/nd/discord" })
 }
