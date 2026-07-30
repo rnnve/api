@@ -14,7 +14,7 @@ const app = new Elysia()
         info: {
           title: "Fumi's Personal API",
           version: "1.0.0",
-          description: "A personal serverless API",
+          description: "A personal serverless API. Discord presence tracking at /v2/discord (primary) and /v2/nd/discord (secondary).",
         },
       },
     }),
@@ -27,6 +27,8 @@ const app = new Elysia()
       health: "/health",
       time: "/time",
       socials: "/socials/:name",
+      discord: "/v2/discord",
+      "discord-nd": "/v2/nd/discord",
       docs: "/docs",
     },
   }))
