@@ -1,7 +1,7 @@
 import { Client, GatewayIntentBits } from "discord.js"
 import type { Env } from "../types/env"
 import type { RedisService } from "../redis/service"
-import { setupHandlers } from "./handlers"
+import { setupHandlers, setupBotHandlers } from "./handlers"
 
 let client: Client | null = null
 
@@ -17,6 +17,9 @@ export function createBot(env: Env, redis: RedisService): Client {
   const userIds = [env.DISCORD_USER_ID, env.DISCORD_USER_ID_2].filter(Boolean)
   for (const id of userIds) {
     setupHandlers(client, redis, id, env.DISCORD_GUILD_ID || undefined)
+  }
+  if (env.DISCORD_BOT_ID) {
+    setupBotHandlers(client, redis, env.DISCORD_BOT_ID)
   }
   return client
 }

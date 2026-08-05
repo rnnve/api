@@ -3,7 +3,7 @@ import app from "./index"
 import { validateEnv } from "./types/env"
 import { connectAll, disconnectAll, getClient, getPublisher, getSubscriber } from "./redis/client"
 import { RedisService } from "./redis/service"
-import { createDiscordRoutes, createDiscordRoutesNd } from "./routes/v2/discord"
+import { createDiscordRoutes } from "./routes/v2/discord"
 import { discordAuth } from "./routes/v2/discord-auth"
 import { createBot, startBot, stopBot, getBot } from "./bot/client"
 
@@ -13,8 +13,11 @@ async function main(): Promise<void> {
   await connectAll(env)
   const redis = new RedisService(getClient(), getPublisher())
   const subscriber = getSubscriber()
-  app.use(createDiscordRoutes(redis, subscriber, env.DISCORD_USER_ID || undefined))
-  app.use(createDiscordRoutesNd(redis, subscriber, env.DISCORD_USER_ID_2 || undefined))
+  app.use(createDiscordRoutes(redis, subscriber, {
+    user1: env.DISCORD_USER_ID || undefined,
+    user2: env.DISCORD_USER_ID_2 || undefined,
+    bot: env.DISCORD_BOT_ID || undefined,
+  }))
   app.use(discordAuth)
 
   if (env.DISCORD_TOKEN) {

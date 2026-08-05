@@ -140,3 +140,29 @@ export function setupHandlers(
     }
   })
 }
+
+export function setupBotHandlers(client: Client, redis: RedisService, botId: string): void {
+  let lastPayload: string | null = null
+
+  async function refresh(): Promise<void> {
+    const user = client.user
+    if (!user) return
+    try {
+      const payload = serializePresence(user.presence)
+      if (!payload) return
+      if (client.token) await enrichPremiumBadge(client.token, botId, payload)
+      const serialized = JSON.stringify(payload)
+      if (serialized === lastPayload) return
+      lastPayload = serialized
+      await redis.saveUser(botId, payload)
+      await redis.publishUpdate(botId, payload)
+    } catch (err) {
+      console.error("[Discord] Failed to refresh bot presence:", err)
+    }
+  }
+
+  client.on("clientReady", async () => {
+    await refresh()
+    setInterval(refresh, 30000)
+  })
+}
