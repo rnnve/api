@@ -1,6 +1,6 @@
 import { Elysia } from "elysia"
 import app from "./index"
-import { validateEnv } from "./types/env"
+import { validateEnv, parseBotConfigs } from "./types/env"
 import { connectAll, disconnectAll, getClient, getPublisher, getSubscriber } from "./redis/client"
 import { RedisService } from "./redis/service"
 import { createDiscordRoutes } from "./routes/v2/discord"
@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   app.use(createDiscordRoutes(redis, subscriber, {
     user1: env.DISCORD_USER_ID || undefined,
     user2: env.DISCORD_USER_ID_2 || undefined,
-    bot: env.DISCORD_BOT_ID || undefined,
+    bots: parseBotConfigs(env.DISCORD_BOTS_ID),
   }))
   app.use(discordAuth)
 

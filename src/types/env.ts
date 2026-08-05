@@ -4,7 +4,7 @@ const envSchema = z.object({
   DISCORD_TOKEN: z.string().default(""),
   DISCORD_USER_ID: z.string().default(""),
   DISCORD_USER_ID_2: z.string().default(""),
-  DISCORD_BOT_ID: z.string().default(""),
+  DISCORD_BOTS_ID: z.string().default(""),
   DISCORD_GUILD_ID: z.string().default(""),
   DISCORD_CLIENT_ID: z.string().default(""),
   DISCORD_CLIENT_SECRET: z.string().default(""),
@@ -13,6 +13,27 @@ const envSchema = z.object({
 })
 
 export type Env = z.infer<typeof envSchema>
+
+export interface BotConfig {
+  alias: string
+  id: string
+}
+
+export function parseBotConfigs(raw: string): BotConfig[] {
+  if (!raw.trim()) return []
+  const result: BotConfig[] = []
+  for (const part of raw.split(",")) {
+    const entry = part.trim()
+    if (!entry) continue
+    const sep = entry.indexOf(":")
+    if (sep <= 0 || sep === entry.length - 1) {
+      console.warn(`[Env] Skipping invalid DISCORD_BOTS_ID entry "${entry}" (expected alias:id)`)
+      continue
+    }
+    result.push({ alias: entry.slice(0, sep).trim(), id: entry.slice(sep + 1).trim() })
+  }
+  return result
+}
 
 let _env: Env | null = null
 

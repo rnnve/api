@@ -145,8 +145,8 @@ export function setupBotHandlers(client: Client, redis: RedisService, botId: str
   let lastPayload: string | null = null
 
   async function refresh(): Promise<void> {
+    if (client.user?.id !== botId) return
     const user = client.user
-    if (!user) return
     try {
       const payload = serializePresence(user.presence)
       if (!payload) return
@@ -162,6 +162,7 @@ export function setupBotHandlers(client: Client, redis: RedisService, botId: str
   }
 
   client.on("clientReady", async () => {
+    if (client.user?.id !== botId) return
     await refresh()
     setInterval(refresh, 30000)
   })

@@ -12,29 +12,36 @@ interface SSEClient {
 
 interface DiscordTargetPluginOptions {
   redis: RedisService
-  targetUserId: string
   prefix: string
   clients: Map<string, SSEClient>
+  resolve: (params: Record<string, string>) => string | null
+  paramName?: string
+}
+
+export interface BotTarget {
+  alias: string
+  id: string
 }
 
 export interface DiscordTargets {
   user1?: string
   user2?: string
-  bot?: string
+  bots: BotTarget[]
 }
 
-const TARGET_PREFIXES: Record<keyof DiscordTargets, string> = {
-  user1: "/v2/discord/user/1",
-  user2: "/v2/discord/user/2",
-  bot: "/v2/discord/bot",
-}
+const USER1_PREFIX = "/v2/discord/user/1"
+const USER2_PREFIX = "/v2/discord/user/2"
+const BOT_PREFIX = "/v2/bot"
 
 const detail = (summary: string, description: string, tags = ["Discord"]) => ({
   detail: { summary, description, tags },
 })
 
-function createTargetPlugin({ redis, targetUserId, prefix, clients }: DiscordTargetPluginOptions) {
-  function createSSEStream(request: Request): ReadableStream {
+function createTargetPlugin({ redis, prefix, clients, resolve, paramName }: DiscordTargetPluginOptions) {
+  const root = paramName ? `/:${paramName}` : "/"
+  const sub = (path: string) => (paramName ? `/:${paramName}/${path}` : `/${path}`)
+
+  function createSSEStream(request: Request, targetUserId: string): ReadableStream {
     return new ReadableStream({
       start: (controller) => {
         const sid = Math.random().toString(36).slice(2, 10)
@@ -72,60 +79,82 @@ function createTargetPlugin({ redis, targetUserId, prefix, clients }: DiscordTar
 
   return new Elysia({ prefix })
     .get(
-      "/",
-      async () => {
+      root,
+      async ({ params }) => {
+        const targetUserId = resolve(params)
+        if (!targetUserId) return { success: false, error: "Unknown tracked target" }
         const user = await redis.getUser(targetUserId)
-        if (!user) return { success: false, error: "No cached data for tracked user" }
+        if (!user) return { success: false, error: "No cached data for tracked target" }
         return { success: true, data: user } satisfies ApiResponse<DiscordUserPayload>
       },
       detail("Get tracked target", "Returns cached data for the configured tracked target."),
     )
     .get(
-      "/profile",
-      async ({ set }) => {
+      sub("profile"),
+      async ({ params, set }) => {
+        const targetUserId = resolve(params)
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "Unknown tracked target" }
+        }
         const profile = await redis.getProfile(targetUserId)
         if (!profile) {
           set.status = 404
-          return { success: false, error: "No cached data for tracked user" }
+          return { success: false, error: "No cached data for tracked target" }
         }
         return { success: true, data: profile } satisfies ApiResponse<DiscordProfile>
       },
-      detail("Get tracked user profile", "Returns cached profile information (username, avatar, banner, accent color, badges, guild)."),
+      detail("Get tracked target profile", "Returns cached profile information (username, avatar, banner, accent color, badges, guild)."),
     )
     .get(
-      "/presence",
-      async ({ set }) => {
+      sub("presence"),
+      async ({ params, set }) => {
+        const targetUserId = resolve(params)
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "Unknown tracked target" }
+        }
         const presence = await redis.getPresence(targetUserId)
         if (!presence) {
           set.status = 404
-          return { success: false, error: "No cached data for tracked user" }
+          return { success: false, error: "No cached data for tracked target" }
         }
         return { success: true, data: presence }
       },
-      detail("Get tracked user presence", "Returns cached presence data (status, activities, Spotify, devices)."),
+      detail("Get tracked target presence", "Returns cached presence data (status, activities, Spotify, devices)."),
     )
     .get(
-      "/status",
-      async ({ set }) => {
+      sub("status"),
+      async ({ params, set }) => {
+        const targetUserId = resolve(params)
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "Unknown tracked target" }
+        }
         const user = await redis.getUser(targetUserId)
         if (!user) {
           set.status = 404
-          return { success: false, error: "No cached data for tracked user" }
+          return { success: false, error: "No cached data for tracked target" }
         }
         return {
           success: true,
           data: { id: user.id, status: user.status },
         }
       },
-      detail("Get tracked user status", "Returns a lightweight payload with only user ID and current status."),
+      detail("Get tracked target status", "Returns a lightweight payload with only target ID and current status."),
     )
     .get(
-      "/badges",
-      async ({ set }) => {
+      sub("badges"),
+      async ({ params, set }) => {
+        const targetUserId = resolve(params)
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "Unknown tracked target" }
+        }
         const user = await redis.getUser(targetUserId)
         if (!user) {
           set.status = 404
-          return { success: false, error: "No cached data for tracked user" }
+          return { success: false, error: "No cached data for tracked target" }
         }
         return {
           success: true,
@@ -136,15 +165,20 @@ function createTargetPlugin({ redis, targetUserId, prefix, clients }: DiscordTar
           },
         }
       },
-      detail("Get tracked user badges", "Returns the user's Discord badges (resolved names) and raw public_flags bitfield."),
+      detail("Get tracked target badges", "Returns the target's Discord badges (resolved names) and raw public_flags bitfield."),
     )
     .get(
-      "/guild",
-      async ({ set }) => {
+      sub("guild"),
+      async ({ params, set }) => {
+        const targetUserId = resolve(params)
+        if (!targetUserId) {
+          set.status = 404
+          return { success: false, error: "Unknown tracked target" }
+        }
         const user = await redis.getUser(targetUserId)
         if (!user) {
           set.status = 404
-          return { success: false, error: "No cached data for tracked user" }
+          return { success: false, error: "No cached data for tracked target" }
         }
         return {
           success: true,
@@ -156,12 +190,19 @@ function createTargetPlugin({ redis, targetUserId, prefix, clients }: DiscordTar
           },
         }
       },
-      detail("Get tracked user guild info", "Returns the user's current guild context and primary guild (clan) tag."),
+      detail("Get tracked target guild info", "Returns the target's current guild context and primary guild (clan) tag."),
     )
     .get(
-      "/live",
-      ({ request }) => {
-        const stream = createSSEStream(request)
+      sub("live"),
+      ({ request, params }) => {
+        const targetUserId = resolve(params)
+        if (!targetUserId) {
+          return new Response(JSON.stringify({ success: false, error: "Unknown tracked target" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+        const stream = createSSEStream(request, targetUserId)
         return new Response(stream, {
           headers: {
             "Content-Type": "text/event-stream",
@@ -174,18 +215,26 @@ function createTargetPlugin({ redis, targetUserId, prefix, clients }: DiscordTar
       detail(
         "Live presence stream (SSE)",
         "Opens a Server-Sent Events connection that streams presence updates in real time. " +
-          "Emits `presence_update` events when the user's presence changes. " +
+          "Emits `presence_update` events when the target's presence changes. " +
           "Includes a heartbeat comment every 30 seconds.",
       ),
     )
 }
 
-function createRedirects() {
+function createRedirects(firstBotAlias?: string) {
   return new Elysia()
     .get("/v2/discord", () => redirect("/v2/discord/user/1", 308))
     .get("/v2/discord/*", ({ params }) => redirect(`/v2/discord/user/1/${params["*"]}`, 308))
     .get("/v2/nd/discord", () => redirect("/v2/discord/user/2", 308))
     .get("/v2/nd/discord/*", ({ params }) => redirect(`/v2/discord/user/2/${params["*"]}`, 308))
+    .get("/v2/discord/bot", () => {
+      if (!firstBotAlias) return { success: false, error: "No bots configured" }
+      return redirect(`/v2/bot/${firstBotAlias}`, 308)
+    })
+    .get("/v2/bot", () => {
+      if (!firstBotAlias) return { success: false, error: "No bots configured" }
+      return redirect(`/v2/bot/${firstBotAlias}`, 308)
+    })
 }
 
 export function createDiscordRoutes(redis: RedisService, subscriber: Redis, targets: DiscordTargets) {
@@ -220,11 +269,34 @@ export function createDiscordRoutes(redis: RedisService, subscriber: Redis, targ
     }
   })
 
+  const botIdByAlias = new Map(targets.bots.map((bot) => [bot.alias, bot.id]))
+
   const app = new Elysia()
-  for (const [key, userId] of Object.entries(targets) as [keyof DiscordTargets, string | undefined][]) {
-    if (!userId) continue
-    app.use(createTargetPlugin({ redis, targetUserId: userId, prefix: TARGET_PREFIXES[key], clients }))
+  if (targets.user1) {
+    app.use(createTargetPlugin({
+      redis,
+      prefix: USER1_PREFIX,
+      clients,
+      resolve: () => targets.user1!,
+    }))
   }
-  app.use(createRedirects())
+  if (targets.user2) {
+    app.use(createTargetPlugin({
+      redis,
+      prefix: USER2_PREFIX,
+      clients,
+      resolve: () => targets.user2!,
+    }))
+  }
+  if (targets.bots.length > 0) {
+    app.use(createTargetPlugin({
+      redis,
+      prefix: BOT_PREFIX,
+      clients,
+      resolve: ({ alias }) => botIdByAlias.get(alias) ?? null,
+      paramName: "alias",
+    }))
+  }
+  app.use(createRedirects(targets.bots[0]?.alias))
   return app
 }
