@@ -10,6 +10,8 @@ const envSchema = z.object({
   DISCORD_CLIENT_SECRET: z.string().default(""),
   REDIS_URL: z.string().default("redis://localhost:6379"),
   PORT: z.coerce.number().default(6770),
+  LASTFM_API_KEY: z.string().default(""),
+  LASTFM_USERNAME: z.string().default(""),
 })
 
 export type Env = z.infer<typeof envSchema>

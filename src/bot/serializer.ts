@@ -39,8 +39,9 @@ function serializeSpotify(activity: Activity): DiscordSpotify | null {
 }
 
 function serializeIcon(activity: Activity): string | null {
-  if (activity.icon && activity.applicationId) {
-    return `https://cdn.discordapp.com/app-assets/${activity.applicationId}/${activity.icon}.png`
+  const icon = (activity as any).icon
+  if (icon && activity.applicationId) {
+    return `https://cdn.discordapp.com/app-assets/${activity.applicationId}/${icon}.png`
   }
   return activity.assets?.largeImage ?? null
 }
@@ -60,7 +61,7 @@ function serializeBadges(user: User | ClientUser): string[] {
 }
 
 function serializePremiumType(user: User | ClientUser): string | null {
-  switch (user.premiumType) {
+  switch ((user as any).premiumType) {
     case 1: return "Nitro Classic"
     case 2: return "Nitro"
     case 3: return "Nitro Basic"
