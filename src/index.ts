@@ -6,6 +6,7 @@ import { time } from "./routes/time"
 import { socialsRoute } from "./routes/socials"
 import { promptpay } from "./routes/promptpay"
 import { lastfmRoute, lastfmRedirects } from "./routes/v2/lastfm"
+import { spotifyRoute, spotifyRedirects } from "./routes/v2/spotify"
 
 const app = new Elysia()
   .use(
@@ -15,7 +16,7 @@ const app = new Elysia()
         info: {
           title: "Fumi's Personal API",
           version: "1.0.0",
-          description: "A personal serverless API. Discord presence tracking at /v2/discord/user/1, /v2/discord/user/2, /v2/bot/:alias, and Last.fm at /api/v2/lastfm.",
+          description: "A personal serverless API. Discord presence tracking at /v2/discord/user/1, /v2/discord/user/2, /v2/bot/:alias, Last.fm at /api/v2/lastfm, and Spotify at /api/v2/spotify.",
         },
       },
     }),
@@ -44,6 +45,13 @@ const app = new Elysia()
         topAlbums: "/api/v2/lastfm/top-albums",
         profile: "/api/v2/lastfm/profile",
       },
+      spotify: {
+        root: "/api/v2/spotify",
+        nowPlaying: "/api/v2/spotify/now-playing",
+        recent: "/api/v2/spotify/recent",
+        login: "/api/v2/spotify/login",
+        callback: "/api/v2/spotify/callback",
+      },
       docs: "/docs",
     },
   }))
@@ -53,6 +61,8 @@ const app = new Elysia()
   .use(promptpay)
   .use(lastfmRoute)
   .use(lastfmRedirects)
+  .use(spotifyRoute)
+  .use(spotifyRedirects)
 
 app.get("/openapi.yaml", async () => {
   const res = await app.fetch(new Request("http://localhost/docs/json"))

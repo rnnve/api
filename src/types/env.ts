@@ -12,6 +12,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(6770),
   LASTFM_API_KEY: z.string().default(""),
   LASTFM_USERNAME: z.string().default(""),
+  SPOTIFY_CLIENT_ID: z.string().default(""),
+  SPOTIFY_CLIENT_SECRET: z.string().default(""),
+  SPOTIFY_REDIRECT_URI: z.string().default(""),
+  SPOTIFY_REFRESH_TOKEN: z.string().default(""),
 })
 
 export type Env = z.infer<typeof envSchema>
