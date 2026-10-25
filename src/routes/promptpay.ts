@@ -28,6 +28,11 @@ export const promptpay = new Elysia({ prefix: "/promptpay" }).get(
     })
   },
   {
+    detail: {
+      summary: "Generate a PromptPay QR code",
+      description: "Creates a PNG PromptPay QR code for a phone number or citizen ID, with an optional amount.",
+      tags: ["Utilities"],
+    },
     query: t.Object({
       number: t.String({
         description:

@@ -13,4 +13,11 @@ export const socialsRoute = new Elysia({ prefix: "/socials" }).get(
 
     return redirect(url, 302)
   },
+  {
+    detail: {
+      summary: "Open a social profile",
+      description: "Redirects a known social name to its configured profile URL.",
+      tags: ["Utilities"],
+    },
+  },
 )
